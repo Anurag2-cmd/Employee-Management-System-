@@ -1,6 +1,6 @@
 export const DEPARTMENTS = ['Engineering', 'Marketing', 'Sales', 'HR', 'Finance', 'Design', 'Operations'];
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'https://backend-ems-kfzn.onrender.com/api';
 
 export async function fetchEmployees() {
   const res = await fetch(`${API_BASE}/employees`);
