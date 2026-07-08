@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react'
-import { loadEmployees, saveEmployees, DEPARTMENTS, formatCurrency } from './data'
+import { useState, useEffect, useCallback } from 'react'
+import { fetchEmployees, createEmployee, updateEmployee, deleteEmployee, DEPARTMENTS } from './data'
 import Dashboard from './components/Dashboard'
 import EmployeeList from './components/EmployeeList'
 import Departments from './components/Departments'
@@ -14,7 +14,8 @@ const PAGES = [
 ]
 
 export default function App() {
-  const [employees, setEmployees] = useState(loadEmployees)
+  const [employees, setEmployees] = useState([])
+  const [loading, setLoading] = useState(true)
   const [page, setPage] = useState('dashboard')
   const [search, setSearch] = useState('')
   const [toasts, setToasts] = useState([])
@@ -29,42 +30,47 @@ export default function App() {
     setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 2500)
   }, [])
 
-  const updateEmployees = useCallback((newEmployees) => {
-    setEmployees(newEmployees)
-    saveEmployees(newEmployees)
-  }, [])
-
-  const handleSave = useCallback((data) => {
-    let newEmployees
-    if (editingEmployee) {
-      newEmployees = employees.map(e => e.id === editingEmployee.id ? { ...e, ...data } : e)
-      addToast('Employee updated!')
-    } else {
-      data.id = Math.max(...employees.map(e => e.id), 0) + 1
-      data.joined = new Date().toISOString().split('T')[0]
-      newEmployees = [...employees, data]
-      addToast('Employee added!')
+  const load = useCallback(async () => {
+    try {
+      const data = await fetchEmployees()
+      setEmployees(data)
+    } catch {
+      addToast('Failed to load employees', 'error')
+    } finally {
+      setLoading(false)
     }
-    updateEmployees(newEmployees)
-    setFormOpen(false)
-    setEditingEmployee(null)
-  }, [employees, editingEmployee, updateEmployees, addToast])
+  }, [addToast])
 
-  const handleDelete = useCallback((id) => {
+  useEffect(() => { load() }, [load])
+
+  const handleSave = useCallback(async (data) => {
+    try {
+      if (editingEmployee) {
+        const updated = await updateEmployee(editingEmployee.id, data)
+        setEmployees(emps => emps.map(e => e.id === updated.id ? updated : e))
+        addToast('Employee updated!')
+      } else {
+        const created = await createEmployee(data)
+        setEmployees(emps => [...emps, created])
+        addToast('Employee added!')
+      }
+      setFormOpen(false)
+      setEditingEmployee(null)
+    } catch {
+      addToast('Failed to save employee', 'error')
+    }
+  }, [editingEmployee, addToast])
+
+  const handleDelete = useCallback(async (id) => {
     if (!confirm('Delete this employee?')) return
-    updateEmployees(employees.filter(e => e.id !== id))
-    addToast('Employee deleted', 'error')
-  }, [employees, updateEmployees, addToast])
-
-  const handleEdit = useCallback((emp) => {
-    setEditingEmployee(emp)
-    setFormOpen(true)
-  }, [])
-
-  const openAdd = useCallback(() => {
-    setEditingEmployee(null)
-    setFormOpen(true)
-  }, [])
+    try {
+      await deleteEmployee(id)
+      setEmployees(emps => emps.filter(e => e.id !== id))
+      addToast('Employee deleted', 'error')
+    } catch {
+      addToast('Failed to delete employee', 'error')
+    }
+  }, [addToast])
 
   const filteredEmployees = employees.filter(e => {
     const q = search.toLowerCase()
@@ -74,6 +80,14 @@ export default function App() {
     const matchStatus = !filterStatus || e.status === filterStatus
     return matchSearch && matchDept && matchStatus
   })
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: 18, color: '#64748b' }}>
+        Loading employees...
+      </div>
+    )
+  }
 
   return (
     <div className="app-container">
@@ -104,24 +118,21 @@ export default function App() {
               <input type="text" placeholder="Search employees..." value={search}
                      onChange={e => setSearch(e.target.value)} />
             </div>
-            <button className="btn btn-primary" onClick={openAdd}>
+            <button className="btn btn-primary" onClick={() => { setEditingEmployee(null); setFormOpen(true) }}>
               <i className="fas fa-plus"></i> Add Employee
             </button>
           </div>
         </header>
 
-        {page === 'dashboard' &&
-          <Dashboard employees={employees} />
-        }
+        {page === 'dashboard' && <Dashboard employees={employees} />}
         {page === 'employees' &&
           <EmployeeList employees={filteredEmployees}
             filterDept={filterDept} setFilterDept={setFilterDept}
             filterStatus={filterStatus} setFilterStatus={setFilterStatus}
-            onEdit={handleEdit} onDelete={handleDelete} />
+            onEdit={(emp) => { setEditingEmployee(emp); setFormOpen(true) }}
+            onDelete={handleDelete} />
         }
-        {page === 'departments' &&
-          <Departments employees={employees} />
-        }
+        {page === 'departments' && <Departments employees={employees} />}
       </main>
 
       {formOpen &&
